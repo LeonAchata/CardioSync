@@ -6,6 +6,8 @@ import pywt
 from datetime import datetime
 import os
 import time
+import matplotlib.pyplot as plt
+import matplotlib
 
 # =============================================================================
 # CONFIGURACIÓN GLOBAL
@@ -31,7 +33,7 @@ class HolterConfig:
     THRESHOLD_MULTIPLIER_LOW_MOTION = 1.0
     
     # Archivos de salida
-    OUTPUT_FOLDER = r'C:\Users\Lenovo\OneDrive\Desktop\PUCP\Instru\Holter_Data'
+    OUTPUT_FOLDER = r'C:\Users\Lenovo\OneDrive\Desktop\python'
     
     @staticmethod
     def create_session_folder():
@@ -234,6 +236,13 @@ class XSpaceSerial:
                 print(f"[TRANSFER] Transferencia completa: {len(data_buffer)} muestras recibidas")
                 return data_buffer
             
+            # Esperando comando (indica que terminó de enviar datos)
+            if line == "WAITING:COMMAND":
+                print("[DEVICE] Esperando comando para nueva captura")
+                if len(data_buffer) > 0:
+                    return data_buffer
+                continue
+            
             # Datos
             if in_transfer and line.startswith("DATA:"):
                 try:
@@ -347,7 +356,67 @@ class DataProcessor:
         df_filtered.to_csv(filtered_file, index=False)
         print(f"[SAVE] Datos filtrados: {filtered_file}")
         
+        # Crear gráfico de las 3 derivaciones filtradas
+        self.plot_ecg_derivations(df_filtered, block_number)
+        
         print(f"{'='*70}\n")
+    
+    def plot_ecg_derivations(self, df_filtered, block_number):
+        """Crea un gráfico con las 3 derivaciones ECG filtradas"""
+        
+        # Crear tiempo en segundos
+        time_seconds = (df_filtered['timestamp'].values - df_filtered['timestamp'].values[0]) / 1000.0
+        
+        # Crear figura con 3 subplots
+        fig, axes = plt.subplots(3, 1, figsize=(14, 10), sharex=True)
+        fig.suptitle(f'ECG - Bloque #{block_number} (Filtrado Wavelet)', fontsize=16, fontweight='bold')
+        
+        # Derivación I
+        axes[0].plot(time_seconds, df_filtered['ECG_I_filt'].values, 'b-', linewidth=0.8)
+        axes[0].set_ylabel('Amplitud (V)', fontsize=11)
+        axes[0].set_title('Derivación I', fontsize=12, fontweight='bold')
+        axes[0].grid(True, alpha=0.3)
+        
+        # Resaltar zonas de movimiento
+        motion_mask = df_filtered['Motion'].values.astype(bool)
+        if np.any(motion_mask):
+            axes[0].fill_between(time_seconds, axes[0].get_ylim()[0], axes[0].get_ylim()[1], 
+                                where=motion_mask, alpha=0.2, color='red', label='Movimiento')
+            axes[0].legend(loc='upper right')
+        
+        # Derivación II
+        axes[1].plot(time_seconds, df_filtered['ECG_II_filt'].values, 'g-', linewidth=0.8)
+        axes[1].set_ylabel('Amplitud (V)', fontsize=11)
+        axes[1].set_title('Derivación II', fontsize=12, fontweight='bold')
+        axes[1].grid(True, alpha=0.3)
+        
+        if np.any(motion_mask):
+            axes[1].fill_between(time_seconds, axes[1].get_ylim()[0], axes[1].get_ylim()[1], 
+                                where=motion_mask, alpha=0.2, color='red', label='Movimiento')
+            axes[1].legend(loc='upper right')
+        
+        # Derivación III
+        axes[2].plot(time_seconds, df_filtered['ECG_III_filt'].values, 'r-', linewidth=0.8)
+        axes[2].set_xlabel('Tiempo (segundos)', fontsize=11)
+        axes[2].set_ylabel('Amplitud (V)', fontsize=11)
+        axes[2].set_title('Derivación III', fontsize=12, fontweight='bold')
+        axes[2].grid(True, alpha=0.3)
+        
+        if np.any(motion_mask):
+            axes[2].fill_between(time_seconds, axes[2].get_ylim()[0], axes[2].get_ylim()[1], 
+                                where=motion_mask, alpha=0.2, color='red', label='Movimiento')
+            axes[2].legend(loc='upper right')
+        
+        # Ajustar espaciado
+        plt.tight_layout()
+        
+        # Guardar figura
+        plot_file = os.path.join(self.session_folder, f"block_{block_number:03d}_ecg_plot.png")
+        plt.savefig(plot_file, dpi=150, bbox_inches='tight')
+        print(f"[SAVE] Gráfico ECG: {plot_file}")
+        
+        # Cerrar figura para liberar memoria
+        plt.close(fig)
 
 
 # =============================================================================

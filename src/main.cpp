@@ -33,6 +33,10 @@ unsigned long lastSampleTime = 0;
 bool isCapturing = false;
 bool dataReady = false;
 
+// Declaración de funciones
+void startCapture();
+void sendDataToPC();
+
 void setup() {
   
   // Inicializar Serial USB para transmisión de datos
@@ -120,10 +124,18 @@ void loop() {
     
     // Esperar comando para nueva captura
     Serial.println("WAITING:COMMAND");
-    while (!Serial.available()) {
-      delay(100);
+    
+    // Limpiar buffer serial
+    while (Serial.available()) {
+      Serial.read();
     }
     
+    // Esperar comando
+    while (!Serial.available()) {
+      delay(50);
+    }
+    
+    delay(10); // Dar tiempo para recibir toda la línea
     String command = Serial.readStringUntil('\n');
     command.trim();
     
