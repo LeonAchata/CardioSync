@@ -1,6 +1,5 @@
 """
-Lambda Function: ProcessSignals - VERSION SOLO ACELEROMETRO
-Procesa señales ECG + Acelerómetro
+Lambda Function: ProcessSignals
 """
 
 import json
@@ -26,9 +25,9 @@ REGION = os.environ.get('AWS_REGION', 'us-east-1')
 
 # Escalas del ESP32
 ECG_SCALE_FACTOR = 6553.6
-ACCEL_SCALE = 16.0 / 32768.0  # Solo acelerómetro
+ACCEL_SCALE = 16.0 / 32768.0 
 
-# FRECUENCIAS HARDCODED
+# FRECUENCIAS
 ECG_SAMPLE_RATE_HZ = 250
 IMU_SAMPLE_RATE_HZ = 50  # Ajustado a 50Hz para reducir I2C
 
@@ -101,12 +100,8 @@ class SignalProcessor:
         ecg_lpf = self.lowpass_filter(ecg_hpf, cutoff=lpf_cutoff, fs=fs)
         
         # Paso 3: Notch 60Hz
-        if fs > 120:
-            ecg_filtered = self.notch_filter_60hz(ecg_lpf, fs)
-        else:
-            ecg_filtered = ecg_lpf
-            print("[PREPROCESS] Saltando notch (fs muy bajo)")
-        
+        ecg_filtered = self.notch_filter_60hz(ecg_lpf, fs)
+
         return ecg_filtered
     
     def adaptive_wavelet_filter(self, sig, wavelet='db4', level=5, threshold_scale=1.5):
@@ -134,7 +129,7 @@ class SignalProcessor:
     
     def detect_motion_segments(self, accel_data, window_size=50, threshold=0.3):
         """
-        Detecta segmentos de movimiento usando SOLO acelerómetro
+        Detecta segmentos de movimiento
         accel_data: (N, 3) array con [ax, ay, az]
         """
         # Manejar caso sin datos IMU
@@ -188,7 +183,7 @@ class SignalProcessor:
         duration_sec = len(ecg_trimmed) / fs
         
         # Distancia mínima: 0.3s (200 BPM máx)
-        min_distance = int(0.33 * fs)
+        min_distance = int(0.15 * fs)
         
         # Normalizar señal
         ecg_norm = ecg_trimmed - np.mean(ecg_trimmed)
@@ -279,7 +274,7 @@ class SignalProcessor:
 
 
 def parse_binary_file(file_data):
-    """Parsea archivo binario del ESP32 - VERSION SOLO ACELEROMETRO"""
+    """Parsea archivo binario del ESP3"""
     print(f"[PARSE] Archivo de {len(file_data)} bytes")
     
     # Header: magic(4) + version(2) + device_id(2) + session_id(4) + timestamp(4) + 
@@ -340,13 +335,12 @@ def parse_binary_file(file_data):
     ecg_data = ecg_data_raw.astype(np.float32) / ECG_SCALE_FACTOR
     print(f"[PARSE] ECG: shape={ecg_data.shape}, rango=[{ecg_data.min():.3f}, {ecg_data.max():.3f}] mV")
     
-    # Leer IMU - SOLO ACELEROMETRO (3 valores)
+    # Leer IMU (3 valores)
     if header['num_imu_samples'] > 0:
         imu_raw = np.frombuffer(file_data[imu_start:imu_start + imu_size], dtype=np.int16)
         n_imu = len(imu_raw) // 3  # 3 valores por muestra (ax, ay, az)
         imu_raw = imu_raw[:n_imu * 3].reshape(-1, 3)
         
-        # Solo acelerómetro
         imu_data = imu_raw.astype(np.float32) * ACCEL_SCALE
         
         print(f"[PARSE] IMU (Accel): shape={imu_data.shape}")
@@ -364,7 +358,7 @@ def parse_binary_file(file_data):
 
 
 def generate_csv_data(ecg_raw, ecg_filtered, imu_data, motion_mask):
-    """Genera CSV con datos - VERSION SOLO ACELEROMETRO"""
+    """Genera CSV con datos"""
     output = StringIO()
     writer = csv.writer(output)
     
@@ -556,7 +550,7 @@ def generate_plots(ecg_filtered, ecg_raw, imu_accel, motion_mask, metadata, hear
     plots['dashboard.png'] = buf.getvalue()
     plt.close()
     
-    # ========== PLOT 4: IMU Acelerómetro (solo si hay datos) ==========
+    # ========== PLOT 4: IMU (solo si hay datos) ==========
     if n_imu > 0:
         fig, axes = plt.subplots(3, 1, figsize=(14, 8), sharex=True)
         fig.suptitle('Acelerómetro - 3 Ejes', fontsize=14, fontweight='bold')
@@ -607,7 +601,7 @@ def lambda_handler(event, context):
         
         # Detectar movimiento (solo si hay datos IMU)
         if len(imu_data) > 0:
-            accel_data = imu_data  # Ya es solo acelerómetro (3 columnas)
+            accel_data = imu_data
             motion_mask_imu = processor.detect_motion_segments(accel_data)
             motion_percentage = (motion_mask_imu.sum() / len(motion_mask_imu)) * 100 if len(motion_mask_imu) > 0 else 0
         else:

@@ -554,8 +554,6 @@ void captureLoop() {
     currentTime = micros();  // Actualizar tiempo
   }
   
-  // IMU - DESACTIVADO TEMPORALMENTE PARA DEBUG
-  /*
   if (currentTime - lastIMUSample >= IMU_INTERVAL_US) {
     lastIMUSample += IMU_INTERVAL_US;
     
@@ -573,8 +571,7 @@ void captureLoop() {
     writeToBuffer((uint8_t*)&sample, sizeof(IMUSample));
     imuSampleCount++;
   }
-  */
-  
+
   // Flush periódico cada 3 segundos para reducir operaciones SD
   if (millis() - lastFlush >= 3000) {
     flushBuffer();
@@ -693,8 +690,8 @@ void setup() {
   Serial.begin(BAUD_RATE);
   delay(2000);
   
-  Serial.println("\n========================================");
-  Serial.println("HOLTER FASE 2: CAPTURA + AWS UPLOAD");
+  Serial.println("\n======================================");
+  Serial.println("HOLTER FASE 2: CAPTURA");
   Serial.println("========================================");
   
   // Hardware
