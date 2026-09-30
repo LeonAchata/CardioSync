@@ -1,7 +1,7 @@
 #include "display_ui.h"
 
 // ============================================================================
-// CONFIGURACIÓN HARDWARE
+// HARDWARE CONFIGURATION
 // ============================================================================
 
 #define SCREEN_WIDTH 128
@@ -11,41 +11,39 @@
 #define BATTERY_PIN 36
 
 // ============================================================================
-// VARIABLES INTERNAS (PRIVADAS)
+// INTERNAL STATE
 // ============================================================================
 
 static Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 static XSpaceBioV10Board* g_bioBoard = nullptr;
 
-// Estado
+// State
+static bool displayReady = false;
 static DisplayMode currentMode = DISP_IDLE;
 static float currentProgress = 0.0;
 static String currentMessage = "";
 static String currentText = "";
 static unsigned long messageTimeout = 0;
 
-// Botón
-static byte lastButtonState = HIGH;
+// Button
+static byte lastButtonReading = HIGH;
+static byte stableButtonState = HIGH;
 static unsigned long lastDebounceTime = 0;
 static const unsigned long debounceDelay = 50;
 
-// ECG para display
-static float ecg_I = 0.0;
-static float ecg_II = 0.0;
-static float ecg_III = 0.0;
 
 // Timing
 static unsigned long lastUpdateTime = 0;
 static const unsigned long UPDATE_INTERVAL = 200; // 200ms = 5fps
 
 // ============================================================================
-// FUNCIONES INTERNAS (PRIVADAS)
+// INTERNAL HELPERS
 // ============================================================================
 
 static void drawBatteryIconInternal(int x, int y, int percentage) {
   display.drawRect(x, y, 18, 9, SSD1306_WHITE);
   display.fillRect(x + 18, y + 2, 2, 5, SSD1306_WHITE);
-  int fillWidth = map(percentage, 0, 100, 0, 15);
+  int fillWidth = map(constrain(percentage, 0, 100), 0, 100, 0, 15);
   display.fillRect(x + 2, y + 2, fillWidth, 5, SSD1306_WHITE);
 }
 
@@ -64,39 +62,36 @@ static BatteryInfo getBatteryStatusInternal() {
   return battery;
 }
 
-static String obtenerHoraActual() {
+static String currentTimeString() {
   struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) return "00:00:00";
+  // Timeout 0: getLocalTime() blocks up to 5 s by default if the clock is not set
+  if (!getLocalTime(&timeinfo, 0)) return "--:--:--";
   
   char buffer[10];
-  sprintf(buffer, "%02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+  snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
   return String(buffer);
 }
 
 static void drawIdleScreen() {
   display.clearDisplay();
   
-  // Hora arriba a la izquierda
+  // Clock, top left
   display.setTextSize(1);
   display.setCursor(0, 0);
-  display.print(obtenerHoraActual());
+  display.print(currentTimeString());
   
-  // Batería arriba a la derecha
+  // Battery, top right
   BatteryInfo battery = getBatteryStatusInternal();
   drawBatteryIconInternal(105, 0, battery.percentage);
   
-  // ECG en el centro
-  display.setTextSize(1);
+  display.setTextSize(2);
   display.setCursor(0, 20);
-  display.printf("I:  %.2f mV", ecg_I);
-  display.setCursor(0, 32);
-  display.printf("II: %.2f mV", ecg_II);
-  display.setCursor(0, 44);
-  display.printf("III:%.2f mV", ecg_III);
-  
-  // Texto adicional
+  display.print("Standby");
+  display.setTextSize(1);
+
+  // Status text
   if (currentText.length() > 0) {
-    display.setCursor(0, 56);
+    display.setCursor(0, 48);
     display.print(currentText);
   }
   
@@ -107,12 +102,12 @@ static void drawConfirmCaptureScreen() {
   display.clearDisplay();
   display.setTextSize(2);
   display.setCursor(10, 10);
-  display.print("Grabar?");
+  display.print("Record?");
   display.setTextSize(1);
   display.setCursor(10, 35);
-  display.print("Presiona boton");
+  display.print("Press button");
   display.setCursor(10, 45);
-  display.print("para confirmar");
+  display.print("to confirm");
   display.display();
 }
 
@@ -120,12 +115,12 @@ static void drawConfirmUploadScreen() {
   display.clearDisplay();
   display.setTextSize(2);
   display.setCursor(10, 10);
-  display.print("Subir?");
+  display.print("Upload?");
   display.setTextSize(1);
   display.setCursor(10, 35);
-  display.print("Presiona boton");
+  display.print("Press button");
   display.setCursor(10, 45);
-  display.print("para confirmar");
+  display.print("to confirm");
   display.display();
 }
 
@@ -133,9 +128,9 @@ static void drawCapturingScreen() {
   display.clearDisplay();
   display.setTextSize(2);
   display.setCursor(5, 10);
-  display.print("Grabando");
+  display.print("Recording");
   
-  // Barra de progreso
+  // Progress bar
   int barWidth = 100;
   int barX = 14;
   int barY = 35;
@@ -143,7 +138,7 @@ static void drawCapturingScreen() {
   int fillWidth = (int)(currentProgress * (barWidth - 2));
   display.fillRect(barX + 1, barY + 1, fillWidth, 8, SSD1306_WHITE);
   
-  // Porcentaje
+  // Percentage
   display.setTextSize(1);
   display.setCursor(50, 50);
   display.printf("%d%%", (int)(currentProgress * 100));
@@ -155,9 +150,9 @@ static void drawUploadingScreen() {
   display.clearDisplay();
   display.setTextSize(2);
   display.setCursor(10, 10);
-  display.print("Subiendo");
+  display.print("Uploading");
   
-  // Barra de progreso
+  // Progress bar
   int barWidth = 100;
   int barX = 14;
   int barY = 35;
@@ -165,7 +160,7 @@ static void drawUploadingScreen() {
   int fillWidth = (int)(currentProgress * (barWidth - 2));
   display.fillRect(barX + 1, barY + 1, fillWidth, 8, SSD1306_WHITE);
   
-  // Porcentaje
+  // Percentage
   display.setTextSize(1);
   display.setCursor(50, 50);
   display.printf("%d%%", (int)(currentProgress * 100));
@@ -177,7 +172,7 @@ static void drawMessageScreen() {
   display.clearDisplay();
   display.setTextSize(1);
   
-  // Centrar texto
+  // Centre text
   int16_t x1, y1;
   uint16_t w, h;
   display.getTextBounds(currentMessage, 0, 0, &x1, &y1, &w, &h);
@@ -198,11 +193,11 @@ static void drawErrorScreen() {
 }
 
 // ============================================================================
-// IMPLEMENTACIÓN DE INTERFACE PÚBLICA
+// PUBLIC INTERFACE
 // ============================================================================
 
 void display_forceUpdate() {
-  lastUpdateTime = 0; // Forzar actualización inmediata
+  lastUpdateTime = 0; // Force an immediate redraw
 }
 
 void display_init(XSpaceBioV10Board* bioBoard) {
@@ -210,51 +205,54 @@ void display_init(XSpaceBioV10Board* bioBoard) {
   
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   
-  Serial.println("[Display] Inicializando OLED...");
+  Serial.println("[Display] Initialising OLED...");
   
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    Serial.println(F("[Display] ERROR: No se pudo inicializar OLED en 0x3C"));
-    Serial.println(F("[Display] Intentando con 0x3D..."));
+    Serial.println(F("[Display] OLED not found at 0x3C"));
+    Serial.println(F("[Display] Trying 0x3D..."));
     if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {
-      Serial.println(F("[Display] ERROR: No se pudo inicializar OLED"));
-      return; // No bloquear, continuar sin display
+      Serial.println(F("[Display] ERROR: OLED not found, continuing without display"));
+      return; // Keep running headless
     }
   }
+  displayReady = true;
   
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
   
-  // Mensaje de bienvenida
+  // Splash screen
   display.setTextSize(2);
   display.setCursor(10, 10);
-  display.println("HOLTER");
+  display.println("CARDIO");
   display.setTextSize(1);
   display.setCursor(10, 35);
-  display.println("ECG-IMU System");
+  display.println("CardioSync ECG");
   display.setCursor(10, 50);
-  display.println("Listo!");
+  display.println("Ready!");
   display.display();
   
-  Serial.println("[Display] Inicializado correctamente");
+  Serial.println("[Display] Ready");
   
-  delay(2000); // Mostrar mensaje 2 segundos
+  delay(2000); // Keep the splash for 2 s
   currentMode = DISP_IDLE;
 }
 
 void display_update() {
-  // Actualizar solo cada UPDATE_INTERVAL
+  if (!displayReady) return;
+
+  // Redraw at most every UPDATE_INTERVAL
   unsigned long now = millis();
   if (now - lastUpdateTime < UPDATE_INTERVAL) {
     return;
   }
   lastUpdateTime = now;
   
-  // Verificar timeout de mensaje
-  if (currentMode == DISP_MESSAGE && messageTimeout > 0 && now > messageTimeout) {
+  // Expire temporary messages
+  if (currentMode == DISP_MESSAGE && messageTimeout > 0 && (long)(now - messageTimeout) >= 0) {
     currentMode = DISP_IDLE;
   }
   
-  // Dibujar según modo
+  // Draw the current screen
   switch(currentMode) {
     case DISP_IDLE:
       drawIdleScreen();
@@ -290,19 +288,20 @@ DisplayMode display_getMode() {
 }
 
 bool display_checkButton() {
-  byte currentState = digitalRead(BUTTON_PIN);
+  byte reading = digitalRead(BUTTON_PIN);
   bool buttonPressed = false;
-  
-  if (currentState != lastButtonState) {
-    if ((millis() - lastDebounceTime) > debounceDelay) {
-      if (currentState == LOW) {
-        buttonPressed = true;
-      }
-      lastDebounceTime = millis();
-    }
+
+  // Restart the timer on every bounce; only accept a stable level
+  if (reading != lastButtonReading) {
+    lastDebounceTime = millis();
   }
-  lastButtonState = currentState;
-  
+
+  if ((millis() - lastDebounceTime) > debounceDelay && reading != stableButtonState) {
+    stableButtonState = reading;
+    buttonPressed = (stableButtonState == LOW);
+  }
+
+  lastButtonReading = reading;
   return buttonPressed;
 }
 
@@ -324,6 +323,7 @@ void display_showError(String error) {
 }
 
 void display_clear() {
+  if (!displayReady) return;
   display.clearDisplay();
   display.display();
 }
@@ -333,14 +333,10 @@ BatteryInfo display_getBattery() {
 }
 
 void display_drawBatteryIcon(int x, int y, int percentage) {
+  if (!displayReady) return;
   drawBatteryIconInternal(x, y, percentage);
 }
 
-void display_setECGValue(float derivation_I, float derivation_II, float derivation_III) {
-  ecg_I = derivation_I;
-  ecg_II = derivation_II;
-  ecg_III = derivation_III;
-}
 
 void display_setText(String text) {
   currentText = text;

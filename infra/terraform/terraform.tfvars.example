@@ -1,0 +1,17 @@
+# Copy to terraform.tfvars and adjust.
+
+aws_region   = "us-east-1"
+project_name = "cardiosync"
+environment  = "dev"
+
+# One IoT thing (and certificate) per ESP32
+device_ids = ["cardiosync-esp32-001"]
+
+# Windows + Docker Desktop:
+# docker_host = "npipe:////./pipe/docker_engine"
+
+# Delete raw .bin files after N days (0 = keep forever)
+# raw_data_expiration_days = 365
+
+# Allow `terraform destroy` to remove buckets with data in them
+# force_destroy = true
