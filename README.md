@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🫀 CardioSync
+# CardioSync
 
 **An ESP32 Holter monitor that records 3-lead ECG to an SD card and ships every session to AWS for filtering, heart-rate detection and reporting.**
 
@@ -15,7 +15,7 @@
 
 ---
 
-## ✨ Highlights
+## Highlights
 
 - **Jitter-free sampling** – a dedicated FreeRTOS task samples both AD8232 front-ends at 250 Hz with `vTaskDelayUntil`, decoupled from SD card writes through a queue.
 - **Offline first** – sessions are written to the SD card in a compact binary format; files that fail to upload are retried automatically on the next cycle.
@@ -24,7 +24,7 @@
 - **Serverless analysis** – every upload triggers a Lambda that filters the ECG (band-pass, 60 Hz notch, wavelet denoising), detects R-peaks and publishes plots, a CSV and a JSON summary.
 - **One-command infrastructure** – Terraform provisions IoT things, certificates, buckets, Lambdas, ECR and a DLQ, and **generates the firmware's `aws_config.h`** for you.
 
-## 🏗️ Architecture
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -76,7 +76,7 @@ sequenceDiagram
 
 </details>
 
-## 📁 Repository layout
+## Repository layout
 
 ```
 CardioSync/
@@ -102,7 +102,7 @@ CardioSync/
 └── .github/workflows/ci.yml      # firmware build, tests, lint, terraform validate
 ```
 
-## 🔧 Hardware
+## Hardware
 
 | Component | Details |
 |-----------|---------|
@@ -114,7 +114,7 @@ CardioSync/
 
 > WiFi is powered down during every capture to reduce noise on the analog front-end and save power.
 
-## 🚀 Getting started
+## Getting started
 
 ### Prerequisites
 
@@ -134,7 +134,7 @@ terraform apply
 
 This creates everything in the diagram **and writes `firmware/include/aws_config.h`** with the IoT endpoint, the MQTT topics and the device certificate/key (one file per device is also written to `infra/terraform/generated/<device_id>/`).
 
-> 🪟 **Windows + Docker Desktop:** set `docker_host = "npipe:////./pipe/docker_engine"` in `terraform.tfvars`.
+> **Windows + Docker Desktop:** set `docker_host = "npipe:////./pipe/docker_engine"` in `terraform.tfvars`.
 
 ### 2 · Configure WiFi
 
@@ -168,7 +168,7 @@ s3://<processed-bucket>/processed/<device_id>/<session_id>/
 aws s3 ls s3://$(terraform -chdir=infra/terraform output -raw processed_bucket)/processed/ --recursive
 ```
 
-## ⚙️ How the device works
+## How the device works
 
 ```
  boot ─► mount SD ─► WiFi + NTP (then WiFi off) ─┐
@@ -193,7 +193,7 @@ aws s3 ls s3://$(terraform -chdir=infra/terraform output -raw processed_bucket)/
 | `UPLOAD_URL_TIMEOUT_MS` | `60000` | Wait for the presigned URL |
 | `TZ_INFO` | `<-05>5` | POSIX time zone used in logs |
 
-## 📊 Session file format
+## Session file format
 
 Little-endian binary, defined once in [`firmware/include/ecg_format.h`](firmware/include/ecg_format.h) and parsed by [`cloud/lambdas/process_ecg/cardiosync/parser.py`](cloud/lambdas/process_ecg/cardiosync/parser.py).
 
@@ -241,7 +241,7 @@ pytest -q          # parser, HR detection on synthetic ECG (55/72/110 BPM), both
 ruff check .
 ```
 
-## ☁️ Infrastructure
+## Infrastructure
 
 Everything is defined in [`infra/terraform`](infra/terraform):
 
@@ -257,11 +257,11 @@ Everything is defined in [`infra/terraform`](infra/terraform):
 
 Useful outputs: `terraform output iot_endpoint`, `raw_bucket`, `processed_bucket`, `lambda_functions`, `process_failures_queue_url`.
 
-> 🔐 **The Terraform state contains the device private keys.** Keep it local or use an encrypted remote backend (e.g. S3 with SSE and restricted access). Generated `aws_config.h` files are git-ignored.
+> **The Terraform state contains the device private keys.** Keep it local or use an encrypted remote backend (e.g. S3 with SSE and restricted access). Generated `aws_config.h` files are git-ignored.
 
 Tear everything down with `terraform destroy` (set `force_destroy = true` first if the buckets contain data).
 
-## 🔍 Troubleshooting
+## Troubleshooting
 
 | Symptom (serial log) | Likely cause |
 |----------------------|--------------|
@@ -274,7 +274,7 @@ Tear everything down with `terraform destroy` (set `force_destroy = true` first 
 
 Subscribe to `cardiosync/#` in the **AWS IoT → MQTT test client** to watch the exchange live.
 
-## 🗺️ Roadmap
+## Roadmap
 
 - [ ] Lead-off detection using the AD8232 LO pins
 - [ ] Deep sleep between sessions
@@ -282,8 +282,8 @@ Subscribe to `cardiosync/#` in the **AWS IoT → MQTT test client** to watch the
 - [ ] HRV metrics and arrhythmia flags
 - [ ] Web dashboard for processed sessions
 
-## 👤 Author
+## Author
 
-**Leon Achata** · developed for the Instrumentation course at PUCP.
+- Leon Achata
 
 <sub>⚠️ Educational project — not a certified medical device and not intended for diagnosis.</sub>
